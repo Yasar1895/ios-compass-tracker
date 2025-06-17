@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>iOS Compass to Target</title>
+  <title>Compass to Target</title>
   <style>
     body {
       text-align: center;
@@ -14,7 +14,7 @@
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 20px auto;
+      margin: 40px auto;
       position: relative;
     }
 
@@ -25,78 +25,93 @@
       position: absolute;
       top: 0;
       left: 50%;
+      margin-left: -2px;
       transform-origin: bottom center;
     }
 
-    input, button {
-      padding: 10px;
+    input {
+      padding: 8px;
       font-size: 16px;
-      margin: 10px;
+      width: 140px;
+      margin: 5px;
+    }
+
+    button {
+      padding: 8px 15px;
+      font-size: 16px;
+      margin: 5px;
     }
   </style>
 </head>
 <body>
 
-<h1>Compass to Target</h1>
+<h2>Compass to Target</h2>
 
-<!-- Input for latitude and longitude -->
-<input type="number" id="latitudeInput" placeholder="Enter Latitude" step="any">
-<input type="number" id="longitudeInput" placeholder="Enter Longitude" step="any">
+<!-- Inputs for target -->
+<input id="latInput" placeholder="Latitude" value="21.422487" />
+<input id="lonInput" placeholder="Longitude" value="39.826206" />
 <br>
-<button id="setTargetButton">Set Target</button>
+<button id="setTargetBtn">Set Target</button>
 <button id="startButton">Enable Compass</button>
 
-<!-- Compass visual -->
+<!-- Compass UI -->
 <div id="compass">
   <div id="needle"></div>
 </div>
 
 <script>
-  let targetLat = 0;
-  let targetLon = 0;
+  let targetLat = 21.422487; // Kaaba default
+  let targetLon = 39.826206;
   let userLat = 0, userLon = 0;
-  let lastHeading = 0;
 
-  function toRadians(degrees) {
-    return degrees * Math.PI / 180;
+  // Update target coordinates
+  document.getElementById("setTargetBtn").addEventListener("click", () => {
+    targetLat = parseFloat(document.getElementById("latInput").value);
+    targetLon = parseFloat(document.getElementById("lonInput").value);
+  });
+
+  // Degree-Radian helpers
+  function toRadians(deg) {
+    return deg * Math.PI / 180;
   }
 
-  function toDegrees(radians) {
-    return radians * 180 / Math.PI;
+  function toDegrees(rad) {
+    return rad * 180 / Math.PI;
   }
 
+  // Calculate compass bearing
   function getBearing(lat1, lon1, lat2, lon2) {
     const φ1 = toRadians(lat1);
     const φ2 = toRadians(lat2);
     const Δλ = toRadians(lon2 - lon1);
+
     const y = Math.sin(Δλ) * Math.cos(φ2);
     const x = Math.cos(φ1) * Math.sin(φ2) -
               Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
     return (toDegrees(Math.atan2(y, x)) + 360) % 360;
   }
 
-  function updateNeedle(heading) {
-    if (!targetLat || !targetLon) return;
-
-    const bearing = getBearing(userLat, userLon, targetLat, targetLon);
-    const direction = bearing - heading;
-    const needle = document.getElementById('needle');
-    needle.style.transform = `rotate(${direction}deg)`;
-  }
-
-  // Get user location
+  // Watch user location
   navigator.geolocation.watchPosition((pos) => {
     userLat = pos.coords.latitude;
     userLon = pos.coords.longitude;
-    updateNeedle(lastHeading); // Update whenever location changes
   }, (err) => {
     alert("Location error: " + err.message);
   }, {
     enableHighAccuracy: true
   });
 
+  // Rotate the needle
+  function updateNeedle(heading) {
+    const bearing = getBearing(userLat, userLon, targetLat, targetLon);
+    const direction = (bearing - heading + 360) % 360;
+    const needle = document.getElementById("needle");
+    needle.style.transform = `rotate(${direction}deg)`;
+  }
+
+  // Enable compass
   async function startCompass() {
-    if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const response = await DeviceOrientationEvent.requestPermission();
         if (response !== 'granted') {
@@ -104,37 +119,26 @@
           return;
         }
       } catch (e) {
-        alert("Permission error: " + e);
+        alert("Error requesting permission: " + e);
         return;
       }
     }
 
     window.addEventListener('deviceorientation', (event) => {
-      const heading = event.webkitCompassHeading !== undefined
-        ? event.webkitCompassHeading
-        : 360 - event.alpha;
+      let heading = null;
+      if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading; // iOS
+      } else if (event.alpha !== null) {
+        heading = 360 - event.alpha; // Android
+      }
 
-      if (heading !== null && !isNaN(heading)) {
-        lastHeading = heading;
+      if (heading !== null) {
         updateNeedle(heading);
       }
     }, true);
   }
 
   document.getElementById('startButton').addEventListener('click', startCompass);
-
-  document.getElementById('setTargetButton').addEventListener('click', () => {
-    const lat = parseFloat(document.getElementById('latitudeInput').value);
-    const lon = parseFloat(document.getElementById('longitudeInput').value);
-
-    if (!isNaN(lat) && !isNaN(lon)) {
-      targetLat = lat;
-      targetLon = lon;
-      updateNeedle(lastHeading); // Refresh needle direction
-    } else {
-      alert("Enter valid latitude and longitude");
-    }
-  });
 </script>
 
 </body>
