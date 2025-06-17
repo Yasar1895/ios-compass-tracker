@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
   <title>Compass to Target</title>
   <style>
     body {
@@ -10,77 +9,50 @@
       font-family: sans-serif;
     }
 
-    #compass-container {
-      position: relative;
+    #compass {
       width: 300px;
       height: 300px;
-      margin: 40px auto;
-    }
-
-    #compass {
-      width: 100%;
-      height: 100%;
       border: 10px solid #333;
       border-radius: 50%;
-      position: absolute;
-      top: 0;
-      left: 0;
+      margin: 50px auto;
+      position: relative;
       transform: rotate(0deg);
-      transition: transform 0.3s ease-out;
     }
 
     #needle {
       width: 4px;
-      height: 50%;
-      background-color: red;
+      height: 140px;
+      background: red;
       position: absolute;
-      top: 25%;
+      top: 10px;
       left: 50%;
+      transform: translateX(-50%) rotate(0deg);
       transform-origin: bottom center;
-      transform: rotate(0deg);
-      transition: transform 0.3s ease-out;
-    }
-
-    input {
-      width: 120px;
-      padding: 5px;
-      margin: 10px;
-    }
-
-    #debug {
-      margin-top: 20px;
-      font-size: 14px;
-      background: #f1f1f1;
-      padding: 10px;
-      border-radius: 8px;
-      display: inline-block;
     }
   </style>
 </head>
 <body>
   <h2>Compass to Target</h2>
 
-  <input id="target-lat" type="number" step="any" placeholder="Latitude" />
-  <input id="target-lon" type="number" step="any" placeholder="Longitude" />
-  <br />
+  <input id="target-lat" type="number" step="any" value="21.422487" />
+  <input id="target-lon" type="number" step="any" value="39.826206" />
+  <br><br>
   <button onclick="setTarget()">Set Target</button>
   <button onclick="enableCompass()">Enable Compass</button>
 
-  <div id="compass-container">
-    <div id="compass"></div>
+  <div id="compass">
     <div id="needle"></div>
   </div>
 
   <div id="debug">
-    <strong>Debug Info:</strong><br>
-    Location:<br>
-    <span id="debug-bearing"></span><br>
-    <span id="debug-heading"></span><br>
-    <span id="debug-direction"></span>
+    <p><strong>Debug Info:</strong></p>
+    <p id="debug-bearing">Bearing to Target: --</p>
+    <p id="debug-heading">Compass Heading: --</p>
+    <p id="debug-direction">Needle Rotation: --</p>
   </div>
 
   <script>
-    let targetLat = 21.422487;  // Default: Kaaba
+    let targetLat = 21.422487;
     let targetLon = 39.826206;
     let userLat, userLon;
 
@@ -106,47 +78,58 @@
     }
 
     function updateNeedle(heading) {
-      if (userLat == null || userLon == null) return;
+      if (userLat == null || userLon == null || heading == null) return;
 
       const bearing = getBearing(userLat, userLon, targetLat, targetLon);
       const rotation = (bearing - heading + 360) % 360;
 
-      // Rotate compass to match device orientation
       document.getElementById("compass").style.transform = `rotate(${-heading}deg)`;
-
-      // Rotate needle relative to the compass
       document.getElementById("needle").style.transform = `rotate(${rotation}deg)`;
 
-      // Debug Info
       document.getElementById("debug-bearing").textContent = `Bearing to Target: ${bearing.toFixed(2)}°`;
       document.getElementById("debug-heading").textContent = `Compass Heading: ${heading.toFixed(2)}°`;
       document.getElementById("debug-direction").textContent = `Needle Rotation: ${rotation.toFixed(2)}°`;
     }
 
     function enableCompass() {
-      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then(response => {
-            if (response === 'granted') {
-              window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-              window.addEventListener('deviceorientation', handleOrientation, true);
-            }
-          })
-          .catch(console.error);
-      } else {
-        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-        window.addEventListener('deviceorientation', handleOrientation, true);
-      }
-
       navigator.geolocation.watchPosition(pos => {
         userLat = pos.coords.latitude;
         userLon = pos.coords.longitude;
-      }, console.error, { enableHighAccuracy: true });
+      });
+
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS
+        DeviceOrientationEvent.requestPermission()
+          .then(permission => {
+            if (permission === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation, true);
+            } else {
+              alert("Compass permission denied.");
+            }
+          }).catch(console.error);
+      } else {
+        // Android or older browsers
+        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+        window.addEventListener('deviceorientation', handleOrientation, true);
+      }
     }
 
     function handleOrientation(event) {
-      const heading = event.alpha != null ? 360 - event.alpha : 0;
-      updateNeedle(heading);
+      let heading;
+
+      if (event.absolute && event.alpha != null) {
+        heading = event.alpha;
+      }
+
+      if (typeof event.webkitCompassHeading !== 'undefined') {
+        heading = event.webkitCompassHeading;
+      }
+
+      if (heading != null) {
+        heading = (360 - heading) % 360;
+        updateNeedle(heading);
+      }
     }
   </script>
 </body>
