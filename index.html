@@ -2,18 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>iOS Compass to Kaaba</title>
+  <title>Compass to Kaaba</title>
   <style>
-    body {
-      text-align: center;
-      font-family: sans-serif;
-    }
+    body { font-family: sans-serif; text-align: center; }
     #compass {
       width: 300px;
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 30px auto;
+      margin: 20px auto;
       position: relative;
     }
     #needle {
@@ -26,46 +23,40 @@
       transform: translateX(-50%);
       transform-origin: bottom center;
     }
-    #info {
-      font-size: 16px;
-      margin-top: 20px;
-      white-space: pre-line;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin-top: 20px;
-    }
+    #info { margin-top: 20px; white-space: pre-line; }
+    input { margin: 5px; padding: 5px; width: 100px; }
+    button { margin: 10px; padding: 10px 20px; }
   </style>
 </head>
 <body>
 
   <h2>Compass to Kaaba</h2>
-  <div id="compass">
-    <div id="needle"></div>
+  <div id="compass"><div id="needle"></div></div>
+
+  <div>
+    <label>Lat:</label>
+    <input type="number" step="any" id="latInput">
+    <label>Lon:</label>
+    <input type="number" step="any" id="lonInput">
+    <button onclick="useManualLocation()">Use Manual Location</button>
   </div>
 
-  <div id="info">Waiting for permission...</div>
   <button id="startBtn">Start Compass</button>
+  <div id="info">Waiting...</div>
 
   <script>
+    const KAABA_LAT = 21.4225;
+    const KAABA_LON = 39.8262;
     const needle = document.getElementById('needle');
     const info = document.getElementById('info');
     const startBtn = document.getElementById('startBtn');
 
-    const KAABA_LAT = 21.4225;
-    const KAABA_LON = 39.8262;
-
     let userLat = null;
     let userLon = null;
+    let manualOverride = false;
 
-    function degToRad(deg) {
-      return deg * Math.PI / 180;
-    }
-
-    function radToDeg(rad) {
-      return rad * 180 / Math.PI;
-    }
+    function degToRad(deg) { return deg * Math.PI / 180; }
+    function radToDeg(rad) { return rad * 180 / Math.PI; }
 
     function calculateBearing(lat1, lon1, lat2, lon2) {
       const dLon = degToRad(lon2 - lon1);
@@ -79,50 +70,69 @@
 
     function updateCompass(heading) {
       if (userLat === null || userLon === null) return;
-      const bearingToKaaba = calculateBearing(userLat, userLon, KAABA_LAT, KAABA_LON);
-      const rotation = bearingToKaaba - heading;
+      const bearing = calculateBearing(userLat, userLon, KAABA_LAT, KAABA_LON);
+      const rotation = bearing - heading;
       needle.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
 
-      info.innerText = `Your Lat: ${userLat.toFixed(5)}\nYour Lon: ${userLon.toFixed(5)}
-Heading: ${heading.toFixed(2)}°\nKaaba Bearing: ${bearingToKaaba.toFixed(2)}°
-Needle Rotation: ${rotation.toFixed(2)}°`;
+      info.innerText =
+        `Lat: ${userLat.toFixed(5)}\nLon: ${userLon.toFixed(5)}\n` +
+        `Heading: ${heading.toFixed(2)}°\nKaaba: ${bearing.toFixed(2)}°\n` +
+        `Needle rotation: ${rotation.toFixed(2)}°`;
     }
 
     function startCompass() {
-      // Get location
-      navigator.geolocation.watchPosition((pos) => {
-        userLat = pos.coords.latitude;
-        userLon = pos.coords.longitude;
-      }, (err) => {
-        info.innerText = "Location error: " + err.message;
-      }, {
-        enableHighAccuracy: true,
-        maximumAge: 1000
-      });
+      if (!manualOverride) {
+        navigator.geolocation.watchPosition((pos) => {
+          userLat = pos.coords.latitude;
+          userLon = pos.coords.longitude;
+        }, (err) => {
+          info.innerText = "Location error: " + err.message;
+        }, {
+          enableHighAccuracy: true
+        });
+      }
 
-      // iOS deviceorientation permission
       if (typeof DeviceOrientationEvent !== "undefined" &&
           typeof DeviceOrientationEvent.requestPermission === "function") {
         DeviceOrientationEvent.requestPermission()
-          .then((response) => {
+          .then(response => {
             if (response === "granted") {
-              window.addEventListener("deviceorientationabsolute", handleOrientation, true);
-              window.addEventListener("deviceorientation", handleOrientation, true);
+              window.addEventListener("deviceorientation", handleOrientation);
             } else {
-              info.innerText = "Permission denied for orientation.";
+              info.innerText = "Orientation permission denied.";
             }
           }).catch(console.error);
       } else {
-        // Android or non-iOS
-        window.addEventListener("deviceorientationabsolute", handleOrientation, true);
-        window.addEventListener("deviceorientation", handleOrientation, true);
+        window.addEventListener("deviceorientationabsolute", handleOrientation);
+        window.addEventListener("deviceorientation", handleOrientation);
       }
     }
 
     function handleOrientation(event) {
-      const heading = event.alpha;
-      if (heading !== null) {
+      let heading = event.webkitCompassHeading || event.alpha;
+
+      // Normalize for iOS
+      if (event.absolute === true && typeof event.alpha === "number") {
+        heading = 360 - event.alpha;
+      }
+
+      if (heading != null) {
         updateCompass(heading);
+      } else {
+        info.innerText = "Compass not supported on this device.";
+      }
+    }
+
+    function useManualLocation() {
+      const lat = parseFloat(document.getElementById('latInput').value);
+      const lon = parseFloat(document.getElementById('lonInput').value);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        userLat = lat;
+        userLon = lon;
+        manualOverride = true;
+        info.innerText = `Using manual location:\nLat: ${lat}, Lon: ${lon}`;
+      } else {
+        alert("Enter valid latitude and longitude.");
       }
     }
 
@@ -131,5 +141,6 @@ Needle Rotation: ${rotation.toFixed(2)}°`;
       startCompass();
     });
   </script>
+
 </body>
 </html>
