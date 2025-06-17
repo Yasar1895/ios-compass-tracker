@@ -14,7 +14,7 @@
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 50px auto;
+      margin: 20px auto;
       position: relative;
     }
 
@@ -28,24 +28,34 @@
       transform-origin: bottom center;
     }
 
-    #startButton {
-      padding: 10px 20px;
-      font-size: 18px;
-      margin-top: 20px;
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 10px;
     }
   </style>
 </head>
 <body>
 
-<h1>iOS Compass to Target</h1>
+<h1>Compass to Target</h1>
+
+<!-- Input for latitude and longitude -->
+<input type="number" id="latitudeInput" placeholder="Enter Latitude" step="any">
+<input type="number" id="longitudeInput" placeholder="Enter Longitude" step="any">
+<br>
+<button id="setTargetButton">Set Target</button>
+<button id="startButton">Enable Compass</button>
+
+<!-- Compass visual -->
 <div id="compass">
   <div id="needle"></div>
 </div>
-<button id="startButton">Enable Compass</button>
 
 <script>
-  const targetLat = 40.748817;  // Example: Empire State Building
-  const targetLon = -73.985428;
+  let targetLat = 0;
+  let targetLon = 0;
+  let userLat = 0, userLon = 0;
+  let lastHeading = 0;
 
   function toRadians(degrees) {
     return degrees * Math.PI / 180;
@@ -59,35 +69,34 @@
     const φ1 = toRadians(lat1);
     const φ2 = toRadians(lat2);
     const Δλ = toRadians(lon2 - lon1);
-
     const y = Math.sin(Δλ) * Math.cos(φ2);
     const x = Math.cos(φ1) * Math.sin(φ2) -
               Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-
     return (toDegrees(Math.atan2(y, x)) + 360) % 360;
   }
 
-  let userLat = 0, userLon = 0;
-
-  // Watch user position
-  navigator.geolocation.watchPosition((pos) => {
-    userLat = pos.coords.latitude;
-    userLon = pos.coords.longitude;
-  }, (err) => {
-    alert("Location error: " + err.message);
-  }, {
-    enableHighAccuracy: true
-  });
-
   function updateNeedle(heading) {
+    if (!targetLat || !targetLon) return;
+
     const bearing = getBearing(userLat, userLon, targetLat, targetLon);
     const direction = bearing - heading;
     const needle = document.getElementById('needle');
     needle.style.transform = `rotate(${direction}deg)`;
   }
 
+  // Get user location
+  navigator.geolocation.watchPosition((pos) => {
+    userLat = pos.coords.latitude;
+    userLon = pos.coords.longitude;
+    updateNeedle(lastHeading); // Update whenever location changes
+  }, (err) => {
+    alert("Location error: " + err.message);
+  }, {
+    enableHighAccuracy: true
+  });
+
   async function startCompass() {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
       try {
         const response = await DeviceOrientationEvent.requestPermission();
         if (response !== 'granted') {
@@ -95,25 +104,37 @@
           return;
         }
       } catch (e) {
-        alert("Error requesting permission: " + e);
+        alert("Permission error: " + e);
         return;
       }
     }
 
     window.addEventListener('deviceorientation', (event) => {
-      if (event.absolute || event.webkitCompassHeading !== undefined) {
-        const heading = event.webkitCompassHeading !== undefined
-          ? event.webkitCompassHeading
-          : 360 - event.alpha;
+      const heading = event.webkitCompassHeading !== undefined
+        ? event.webkitCompassHeading
+        : 360 - event.alpha;
 
-        if (heading !== null) {
-          updateNeedle(heading);
-        }
+      if (heading !== null && !isNaN(heading)) {
+        lastHeading = heading;
+        updateNeedle(heading);
       }
     }, true);
   }
 
   document.getElementById('startButton').addEventListener('click', startCompass);
+
+  document.getElementById('setTargetButton').addEventListener('click', () => {
+    const lat = parseFloat(document.getElementById('latitudeInput').value);
+    const lon = parseFloat(document.getElementById('longitudeInput').value);
+
+    if (!isNaN(lat) && !isNaN(lon)) {
+      targetLat = lat;
+      targetLon = lon;
+      updateNeedle(lastHeading); // Refresh needle direction
+    } else {
+      alert("Enter valid latitude and longitude");
+    }
+  });
 </script>
 
 </body>
