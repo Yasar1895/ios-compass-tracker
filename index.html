@@ -2,23 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>iOS Compass to Target</title>
+  <title>iOS Compass to Kaaba</title>
   <style>
     body {
-      font-family: sans-serif;
       text-align: center;
-      margin: 30px;
+      font-family: sans-serif;
     }
-
     #compass {
       width: 300px;
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 40px auto;
+      margin: 30px auto;
       position: relative;
     }
-
     #needle {
       width: 4px;
       height: 140px;
@@ -26,116 +23,113 @@
       position: absolute;
       top: 10px;
       left: 50%;
-      transform: translateX(-50%) rotate(0deg);
+      transform: translateX(-50%);
       transform-origin: bottom center;
     }
-
-    input {
-      margin: 5px;
-      width: 120px;
-      text-align: center;
-    }
-
-    button {
-      margin: 5px;
-      padding: 6px 12px;
-    }
-
-    #debug {
+    #info {
+      font-size: 16px;
       margin-top: 20px;
-      background: #f3f3f3;
-      padding: 10px;
-      display: inline-block;
-      border-radius: 8px;
+      white-space: pre-line;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h2>Compass to Target</h2>
-  <input id="target-lat" value="21.422487" type="number" step="any">
-  <input id="target-lon" value="39.826206" type="number" step="any">
-  <br>
-  <button onclick="setTarget()">Set Target</button>
-  <button onclick="enableCompass()">Enable Compass</button>
 
+  <h2>Compass to Kaaba</h2>
   <div id="compass">
     <div id="needle"></div>
   </div>
 
-  <div id="debug">
-    <div id="debug-location">Location: --</div>
-    <div id="debug-bearing">Bearing: --</div>
-    <div id="debug-heading">Heading: --</div>
-    <div id="debug-rotation">Needle: --</div>
-  </div>
+  <div id="info">Waiting for permission...</div>
+  <button id="startBtn">Start Compass</button>
 
   <script>
-    let userLat = null, userLon = null;
-    let targetLat = 21.422487, targetLon = 39.826206;
+    const needle = document.getElementById('needle');
+    const info = document.getElementById('info');
+    const startBtn = document.getElementById('startBtn');
 
-    function setTarget() {
-      targetLat = parseFloat(document.getElementById("target-lat").value);
-      targetLon = parseFloat(document.getElementById("target-lon").value);
+    const KAABA_LAT = 21.4225;
+    const KAABA_LON = 39.8262;
+
+    let userLat = null;
+    let userLon = null;
+
+    function degToRad(deg) {
+      return deg * Math.PI / 180;
     }
 
-    function enableCompass() {
-      // Enable location tracking
-      navigator.geolocation.watchPosition(position => {
-        userLat = position.coords.latitude;
-        userLon = position.coords.longitude;
-        document.getElementById("debug-location").textContent =
-          `Location: ${userLat.toFixed(5)}, ${userLon.toFixed(5)}`;
+    function radToDeg(rad) {
+      return rad * 180 / Math.PI;
+    }
+
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+      const dLon = degToRad(lon2 - lon1);
+      lat1 = degToRad(lat1);
+      lat2 = degToRad(lat2);
+      const y = Math.sin(dLon) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) -
+                Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+      return (radToDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function updateCompass(heading) {
+      if (userLat === null || userLon === null) return;
+      const bearingToKaaba = calculateBearing(userLat, userLon, KAABA_LAT, KAABA_LON);
+      const rotation = bearingToKaaba - heading;
+      needle.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
+
+      info.innerText = `Your Lat: ${userLat.toFixed(5)}\nYour Lon: ${userLon.toFixed(5)}
+Heading: ${heading.toFixed(2)}°\nKaaba Bearing: ${bearingToKaaba.toFixed(2)}°
+Needle Rotation: ${rotation.toFixed(2)}°`;
+    }
+
+    function startCompass() {
+      // Get location
+      navigator.geolocation.watchPosition((pos) => {
+        userLat = pos.coords.latitude;
+        userLon = pos.coords.longitude;
+      }, (err) => {
+        info.innerText = "Location error: " + err.message;
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000
       });
 
-      // Handle iOS permission
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS deviceorientation permission
+      if (typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function") {
         DeviceOrientationEvent.requestPermission()
-          .then(permission => {
-            if (permission === 'granted') {
-              window.addEventListener('deviceorientation', handleOrientation);
+          .then((response) => {
+            if (response === "granted") {
+              window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+              window.addEventListener("deviceorientation", handleOrientation, true);
             } else {
-              alert("Permission denied");
+              info.innerText = "Permission denied for orientation.";
             }
           }).catch(console.error);
       } else {
-        // Android or older iOS
-        window.addEventListener('deviceorientation', handleOrientation);
+        // Android or non-iOS
+        window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+        window.addEventListener("deviceorientation", handleOrientation, true);
       }
     }
 
     function handleOrientation(event) {
-      let heading;
-
-      if (typeof event.webkitCompassHeading !== "undefined") {
-        heading = event.webkitCompassHeading; // iOS
-      } else if (event.absolute && event.alpha !== null) {
-        heading = 360 - event.alpha; // Android (rough)
+      const heading = event.alpha;
+      if (heading !== null) {
+        updateCompass(heading);
       }
-
-      if (heading == null || userLat == null) return;
-
-      const bearing = getBearing(userLat, userLon, targetLat, targetLon);
-      const rotation = (bearing - heading + 360) % 360;
-
-      document.getElementById("needle").style.transform = `rotate(${rotation}deg)`;
-      document.getElementById("debug-heading").textContent = `Heading: ${heading.toFixed(2)}°`;
-      document.getElementById("debug-bearing").textContent = `Bearing: ${bearing.toFixed(2)}°`;
-      document.getElementById("debug-rotation").textContent = `Needle: ${rotation.toFixed(2)}°`;
     }
 
-    function getBearing(lat1, lon1, lat2, lon2) {
-      const toRad = deg => deg * Math.PI / 180;
-      const toDeg = rad => rad * 180 / Math.PI;
-      const φ1 = toRad(lat1), φ2 = toRad(lat2);
-      const Δλ = toRad(lon2 - lon1);
-
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) -
-                Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-      const θ = Math.atan2(y, x);
-
-      return (toDeg(θ) + 360) % 360;
-    }
+    startBtn.addEventListener('click', () => {
+      startBtn.style.display = 'none';
+      startCompass();
+    });
   </script>
 </body>
 </html>
