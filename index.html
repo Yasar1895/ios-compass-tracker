@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>iOS Compass to Target</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: sans-serif;
+    }
+
+    #compass {
+      width: 300px;
+      height: 300px;
+      border: 10px solid #333;
+      border-radius: 50%;
+      margin: 50px auto;
+      position: relative;
+    }
+
+    #needle {
+      width: 4px;
+      height: 150px;
+      background: red;
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform-origin: bottom center;
+    }
+
+    #startButton {
+      padding: 10px 20px;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>iOS Compass to Target</h1>
+<div id="compass">
+  <div id="needle"></div>
+</div>
+<button id="startButton">Enable Compass</button>
+
+<script>
+  const targetLat = 40.748817;  // Example: Empire State Building
+  const targetLon = -73.985428;
+
+  function toRadians(degrees) {
+    return degrees * Math.PI / 180;
+  }
+
+  function toDegrees(radians) {
+    return radians * 180 / Math.PI;
+  }
+
+  function getBearing(lat1, lon1, lat2, lon2) {
+    const φ1 = toRadians(lat1);
+    const φ2 = toRadians(lat2);
+    const Δλ = toRadians(lon2 - lon1);
+
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) -
+              Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+
+    return (toDegrees(Math.atan2(y, x)) + 360) % 360;
+  }
+
+  let userLat = 0, userLon = 0;
+
+  // Watch user position
+  navigator.geolocation.watchPosition((pos) => {
+    userLat = pos.coords.latitude;
+    userLon = pos.coords.longitude;
+  }, (err) => {
+    alert("Location error: " + err.message);
+  }, {
+    enableHighAccuracy: true
+  });
+
+  function updateNeedle(heading) {
+    const bearing = getBearing(userLat, userLon, targetLat, targetLon);
+    const direction = bearing - heading;
+    const needle = document.getElementById('needle');
+    needle.style.transform = `rotate(${direction}deg)`;
+  }
+
+  async function startCompass() {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const response = await DeviceOrientationEvent.requestPermission();
+        if (response !== 'granted') {
+          alert("Permission denied for motion sensors.");
+          return;
+        }
+      } catch (e) {
+        alert("Error requesting permission: " + e);
+        return;
+      }
+    }
+
+    window.addEventListener('deviceorientation', (event) => {
+      if (event.absolute || event.webkitCompassHeading !== undefined) {
+        const heading = event.webkitCompassHeading !== undefined
+          ? event.webkitCompassHeading
+          : 360 - event.alpha;
+
+        if (heading !== null) {
+          updateNeedle(heading);
+        }
+      }
+    }, true);
+  }
+
+  document.getElementById('startButton').addEventListener('click', startCompass);
+</script>
+
+</body>
+</html>
