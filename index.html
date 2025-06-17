@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Compass to Target</title>
+  <title>iOS Compass to Target</title>
   <style>
     body {
-      text-align: center;
       font-family: sans-serif;
+      text-align: center;
+      margin: 30px;
     }
 
     #compass {
@@ -14,9 +15,8 @@
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 50px auto;
+      margin: 40px auto;
       position: relative;
-      transform: rotate(0deg);
     }
 
     #needle {
@@ -29,14 +29,32 @@
       transform: translateX(-50%) rotate(0deg);
       transform-origin: bottom center;
     }
+
+    input {
+      margin: 5px;
+      width: 120px;
+      text-align: center;
+    }
+
+    button {
+      margin: 5px;
+      padding: 6px 12px;
+    }
+
+    #debug {
+      margin-top: 20px;
+      background: #f3f3f3;
+      padding: 10px;
+      display: inline-block;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <h2>Compass to Target</h2>
-
-  <input id="target-lat" type="number" step="any" value="21.422487" />
-  <input id="target-lon" type="number" step="any" value="39.826206" />
-  <br><br>
+  <input id="target-lat" value="21.422487" type="number" step="any">
+  <input id="target-lon" value="39.826206" type="number" step="any">
+  <br>
   <button onclick="setTarget()">Set Target</button>
   <button onclick="enableCompass()">Enable Compass</button>
 
@@ -45,28 +63,70 @@
   </div>
 
   <div id="debug">
-    <p><strong>Debug Info:</strong></p>
-    <p id="debug-bearing">Bearing to Target: --</p>
-    <p id="debug-heading">Compass Heading: --</p>
-    <p id="debug-direction">Needle Rotation: --</p>
+    <div id="debug-location">Location: --</div>
+    <div id="debug-bearing">Bearing: --</div>
+    <div id="debug-heading">Heading: --</div>
+    <div id="debug-rotation">Needle: --</div>
   </div>
 
   <script>
-    let targetLat = 21.422487;
-    let targetLon = 39.826206;
-    let userLat, userLon;
+    let userLat = null, userLon = null;
+    let targetLat = 21.422487, targetLon = 39.826206;
 
     function setTarget() {
       targetLat = parseFloat(document.getElementById("target-lat").value);
       targetLon = parseFloat(document.getElementById("target-lon").value);
     }
 
+    function enableCompass() {
+      // Enable location tracking
+      navigator.geolocation.watchPosition(position => {
+        userLat = position.coords.latitude;
+        userLon = position.coords.longitude;
+        document.getElementById("debug-location").textContent =
+          `Location: ${userLat.toFixed(5)}, ${userLon.toFixed(5)}`;
+      });
+
+      // Handle iOS permission
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(permission => {
+            if (permission === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation);
+            } else {
+              alert("Permission denied");
+            }
+          }).catch(console.error);
+      } else {
+        // Android or older iOS
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    }
+
+    function handleOrientation(event) {
+      let heading;
+
+      if (typeof event.webkitCompassHeading !== "undefined") {
+        heading = event.webkitCompassHeading; // iOS
+      } else if (event.absolute && event.alpha !== null) {
+        heading = 360 - event.alpha; // Android (rough)
+      }
+
+      if (heading == null || userLat == null) return;
+
+      const bearing = getBearing(userLat, userLon, targetLat, targetLon);
+      const rotation = (bearing - heading + 360) % 360;
+
+      document.getElementById("needle").style.transform = `rotate(${rotation}deg)`;
+      document.getElementById("debug-heading").textContent = `Heading: ${heading.toFixed(2)}°`;
+      document.getElementById("debug-bearing").textContent = `Bearing: ${bearing.toFixed(2)}°`;
+      document.getElementById("debug-rotation").textContent = `Needle: ${rotation.toFixed(2)}°`;
+    }
+
     function getBearing(lat1, lon1, lat2, lon2) {
       const toRad = deg => deg * Math.PI / 180;
       const toDeg = rad => rad * 180 / Math.PI;
-
-      const φ1 = toRad(lat1);
-      const φ2 = toRad(lat2);
+      const φ1 = toRad(lat1), φ2 = toRad(lat2);
       const Δλ = toRad(lon2 - lon1);
 
       const y = Math.sin(Δλ) * Math.cos(φ2);
@@ -75,61 +135,6 @@
       const θ = Math.atan2(y, x);
 
       return (toDeg(θ) + 360) % 360;
-    }
-
-    function updateNeedle(heading) {
-      if (userLat == null || userLon == null || heading == null) return;
-
-      const bearing = getBearing(userLat, userLon, targetLat, targetLon);
-      const rotation = (bearing - heading + 360) % 360;
-
-      document.getElementById("compass").style.transform = `rotate(${-heading}deg)`;
-      document.getElementById("needle").style.transform = `rotate(${rotation}deg)`;
-
-      document.getElementById("debug-bearing").textContent = `Bearing to Target: ${bearing.toFixed(2)}°`;
-      document.getElementById("debug-heading").textContent = `Compass Heading: ${heading.toFixed(2)}°`;
-      document.getElementById("debug-direction").textContent = `Needle Rotation: ${rotation.toFixed(2)}°`;
-    }
-
-    function enableCompass() {
-      navigator.geolocation.watchPosition(pos => {
-        userLat = pos.coords.latitude;
-        userLon = pos.coords.longitude;
-      });
-
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS
-        DeviceOrientationEvent.requestPermission()
-          .then(permission => {
-            if (permission === 'granted') {
-              window.addEventListener('deviceorientation', handleOrientation, true);
-            } else {
-              alert("Compass permission denied.");
-            }
-          }).catch(console.error);
-      } else {
-        // Android or older browsers
-        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-        window.addEventListener('deviceorientation', handleOrientation, true);
-      }
-    }
-
-    function handleOrientation(event) {
-      let heading;
-
-      if (event.absolute && event.alpha != null) {
-        heading = event.alpha;
-      }
-
-      if (typeof event.webkitCompassHeading !== 'undefined') {
-        heading = event.webkitCompassHeading;
-      }
-
-      if (heading != null) {
-        heading = (360 - heading) % 360;
-        updateNeedle(heading);
-      }
     }
   </script>
 </body>
