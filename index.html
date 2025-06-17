@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Compass to Target</title>
+  <title>Compass to Kaaba (Debug)</title>
   <style>
     body {
       text-align: center;
       font-family: sans-serif;
+      margin-top: 40px;
     }
 
     #compass {
@@ -14,7 +15,7 @@
       height: 300px;
       border: 10px solid #333;
       border-radius: 50%;
-      margin: 40px auto;
+      margin: 30px auto;
       position: relative;
     }
 
@@ -25,21 +26,30 @@
       position: absolute;
       top: 0;
       left: 50%;
-      margin-left: -2px;
       transform-origin: bottom center;
     }
 
     input {
-      padding: 8px;
-      font-size: 16px;
       width: 140px;
+      padding: 5px;
+      font-size: 16px;
       margin: 5px;
     }
 
     button {
-      padding: 8px 15px;
+      padding: 10px 20px;
       font-size: 16px;
-      margin: 5px;
+      margin: 10px 5px;
+    }
+
+    #debug {
+      text-align: left;
+      max-width: 500px;
+      margin: 10px auto;
+      background: #f2f2f2;
+      padding: 15px;
+      border-radius: 5px;
+      font-size: 14px;
     }
   </style>
 </head>
@@ -47,30 +57,33 @@
 
 <h2>Compass to Target</h2>
 
-<!-- Inputs for target -->
-<input id="latInput" placeholder="Latitude" value="21.422487" />
-<input id="lonInput" placeholder="Longitude" value="39.826206" />
-<br>
+<input type="number" id="latInput" placeholder="Latitude" value="21.422487">
+<input type="number" id="lonInput" placeholder="Longitude" value="39.826206"><br>
 <button id="setTargetBtn">Set Target</button>
-<button id="startButton">Enable Compass</button>
+<button id="startBtn">Enable Compass</button>
 
-<!-- Compass UI -->
 <div id="compass">
   <div id="needle"></div>
 </div>
 
+<div id="debug">
+  <strong>Debug Info:</strong>
+  <p id="debug-location">Location: </p>
+  <p id="debug-bearing">Bearing to Target: </p>
+  <p id="debug-heading">Compass Heading: </p>
+  <p id="debug-direction">Needle Rotation: </p>
+</div>
+
 <script>
-  let targetLat = 21.422487; // Kaaba default
+  let targetLat = 21.422487;
   let targetLon = 39.826206;
-  let userLat = 0, userLon = 0;
+  let userLat = 0;
+  let userLon = 0;
 
-  // Update target coordinates
-  document.getElementById("setTargetBtn").addEventListener("click", () => {
-    targetLat = parseFloat(document.getElementById("latInput").value);
-    targetLon = parseFloat(document.getElementById("lonInput").value);
-  });
+  const latInput = document.getElementById('latInput');
+  const lonInput = document.getElementById('lonInput');
+  const needle = document.getElementById('needle');
 
-  // Degree-Radian helpers
   function toRadians(deg) {
     return deg * Math.PI / 180;
   }
@@ -79,7 +92,6 @@
     return rad * 180 / Math.PI;
   }
 
-  // Calculate compass bearing
   function getBearing(lat1, lon1, lat2, lon2) {
     const φ1 = toRadians(lat1);
     const φ2 = toRadians(lat2);
@@ -88,28 +100,36 @@
     const y = Math.sin(Δλ) * Math.cos(φ2);
     const x = Math.cos(φ1) * Math.sin(φ2) -
               Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+
     return (toDegrees(Math.atan2(y, x)) + 360) % 360;
   }
 
-  // Watch user location
+  document.getElementById('setTargetBtn').addEventListener('click', () => {
+    targetLat = parseFloat(latInput.value);
+    targetLon = parseFloat(lonInput.value);
+  });
+
   navigator.geolocation.watchPosition((pos) => {
     userLat = pos.coords.latitude;
     userLon = pos.coords.longitude;
+    document.getElementById('debug-location').textContent = `Location: ${userLat.toFixed(6)}, ${userLon.toFixed(6)}`;
   }, (err) => {
     alert("Location error: " + err.message);
   }, {
     enableHighAccuracy: true
   });
 
-  // Rotate the needle
   function updateNeedle(heading) {
     const bearing = getBearing(userLat, userLon, targetLat, targetLon);
     const direction = (bearing - heading + 360) % 360;
-    const needle = document.getElementById("needle");
     needle.style.transform = `rotate(${direction}deg)`;
+
+    // Debug output
+    document.getElementById('debug-bearing').textContent = `Bearing to Target: ${bearing.toFixed(2)}°`;
+    document.getElementById('debug-heading').textContent = `Compass Heading: ${heading.toFixed(2)}°`;
+    document.getElementById('debug-direction').textContent = `Needle Rotation: ${direction.toFixed(2)}°`;
   }
 
-  // Enable compass
   async function startCompass() {
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
@@ -125,12 +145,9 @@
     }
 
     window.addEventListener('deviceorientation', (event) => {
-      let heading = null;
-      if (event.webkitCompassHeading !== undefined) {
-        heading = event.webkitCompassHeading; // iOS
-      } else if (event.alpha !== null) {
-        heading = 360 - event.alpha; // Android
-      }
+      let heading = event.webkitCompassHeading !== undefined
+        ? event.webkitCompassHeading
+        : 360 - event.alpha;
 
       if (heading !== null) {
         updateNeedle(heading);
@@ -138,7 +155,7 @@
     }, true);
   }
 
-  document.getElementById('startButton').addEventListener('click', startCompass);
+  document.getElementById('startBtn').addEventListener('click', startCompass);
 </script>
 
 </body>
