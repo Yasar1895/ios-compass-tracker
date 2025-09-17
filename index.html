@@ -81,39 +81,44 @@
     }
 
     function startCompass() {
-      if (!manualOverride) {
+      // Ask for geolocation
+      if (!manualOverride && navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
           userLat = pos.coords.latitude;
           userLon = pos.coords.longitude;
         }, (err) => {
-          info.innerText = "Location error: " + err.message;
+          info.innerText = "Location error: " + err.message +
+            "\nPlease enable location access in browser settings.";
         }, {
           enableHighAccuracy: true
         });
       }
 
+      // iOS Safari requires explicit permission for compass
       if (typeof DeviceOrientationEvent !== "undefined" &&
           typeof DeviceOrientationEvent.requestPermission === "function") {
         DeviceOrientationEvent.requestPermission()
           .then(response => {
             if (response === "granted") {
-              window.addEventListener("deviceorientation", handleOrientation);
+              window.addEventListener("deviceorientation", handleOrientation, true);
             } else {
-              info.innerText = "Orientation permission denied.";
+              info.innerText = "Compass permission denied. Please allow access.";
             }
-          }).catch(console.error);
+          }).catch(err => {
+            info.innerText = "Compass error: " + err;
+          });
       } else {
-        window.addEventListener("deviceorientationabsolute", handleOrientation);
-        window.addEventListener("deviceorientation", handleOrientation);
+        // Android & other browsers
+        window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+        window.addEventListener("deviceorientation", handleOrientation, true);
       }
     }
 
     function handleOrientation(event) {
       let heading = event.webkitCompassHeading || event.alpha;
 
-      // Normalize for iOS
       if (event.absolute === true && typeof event.alpha === "number") {
-        heading = 360 - event.alpha;
+        heading = 360 - event.alpha; // fix for iOS
       }
 
       if (heading != null) {
